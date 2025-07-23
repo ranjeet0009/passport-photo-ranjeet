@@ -1,4 +1,5 @@
 streamlit
 rembg
+onnxruntime
 Pillow
 opencv-python
