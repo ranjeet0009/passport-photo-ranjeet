@@ -326,7 +326,7 @@ if uploaded_file:
                     <img src="data:image/png;base64,{original_img_to_base64(original_img)}" style="width: 100%; border-radius: 8px;">
                 </div>
                 <div class="card" style="width: 48%;">
-                    <h3 style="color: #e0e0e0; text-align: center;">Passport Photo (25% Zoom Out)</h3>
+                    <h3 style="color: #e0e0e0; text-align: center;">Output Photo</h3>
                     <img src="data:image/png;base64,{image_to_base64(result_img)}" style="width: 100%; border-radius: 8px;">
                 </div>
             </div>
