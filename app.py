@@ -112,8 +112,10 @@ st.set_page_config(
 
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
-FACE_HEIGHT_RATIO = 0.50 # Face height should be 50% of the total passport photo height
-TOP_SPACE_RATIO = 0.15 # Top space (from top of photo to top of head) should be 15% of total height
+FACE_HEIGHT_RATIO = 0.50
+TOP_SPACE_RATIO = 0.20 # Adjusted top space ratio for more space above head
+SHOULDER_EXTENSION = 0.60 # Increased shoulder extension for more vertical coverage
+ZOOM_OUT_FACTOR = 1.30 # Moderate zoom out factor
 
 # Helper functions to convert images to base64 (moved to top)
 def image_to_base64(image):
@@ -216,35 +218,22 @@ net = load_face_detection_model()
 # Photo Processing Functions
 # ============================================
 def detect_hair_region(np_img, face_box):
-    # This function is primarily for estimating the top of the head/hairline
-    # (x, y, w, h) = face_box
-    # hair_height = int(h * 0.5) # This might be too aggressive, let's simplify
-    # hair_y1 = max(y - hair_height, 0)
-    # return (x, hair_y1, w, hair_height)
-    # For now, we'll rely on the TOP_SPACE_RATIO for top positioning
-    return (0, 0, 0, 0) # Return dummy values as it's not directly used for crop calculation anymore
+    (x, y, w, h) = face_box
+    hair_height = int(h * 0.5)
+    hair_y1 = max(y - hair_height, 0)
+    return (x, hair_y1, w, hair_height)
 
 def standardize_passport_photo(image):
-    # Step 1: Remove background from the original image
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_nobg = remove(img_byte_arr.getvalue())
-    img_nobg_pil = Image.open(io.BytesIO(img_nobg)).convert("RGBA")
-    
-    # Create white background
-    white_bg = Image.new("RGBA", img_nobg_pil.size, (255, 255, 255, 255))
-    img_white = Image.alpha_composite(white_bg, img_nobg_pil).convert("RGB")
-    
-    # Convert to numpy array for face detection
-    np_img_white = np.array(img_white)
-    (h_white, w_white) = np_img_white.shape[:2]
+    # Convert to numpy array for initial face detection
+    np_img_original = np.array(image.convert("RGB"))
+    (h_orig, w_orig) = np_img_original.shape[:2]
     
     # Check if face detection model is loaded
     if net is None:
         raise RuntimeError("Face detection model failed to load.")
 
-    # Detect faces on the image with white background
-    blob = cv2.dnn.blobFromImage(cv2.resize(np_img_white, (300, 300)), 1.0,
+    # Detect faces on the original image
+    blob = cv2.dnn.blobFromImage(cv2.resize(np_img_original, (300, 300)), 1.0,
                                  (300, 300), (104.0, 177.0, 123.0))
     net.setInput(blob)
     detections = net.forward()
@@ -257,89 +246,60 @@ def standardize_passport_photo(image):
         confidence = detections[0, 0, i, 2]
         if confidence > max_confidence:
             max_confidence = confidence
-            box = detections[0, 0, i, 3:7] * np.array([w_white, h_white, w_white, h_white])
+            box = detections[0, 0, i, 3:7] * np.array([w_orig, h_orig, w_orig, h_orig])
             (startX, startY, endX, endY) = box.astype("int")
             best_face = (startX, startY, endX - startX, endY - startY)
     
     if best_face is None:
         raise ValueError("No face detected with sufficient confidence")
     
-    (x, y, w, h) = best_face # Detected face bounding box on the original white-backgrounded image
+    (x, y, w, h) = best_face
+    
+    # Estimate hair region
+    hair_box = detect_hair_region(np_img_original, best_face)
+    
+    # Calculate dimensions for the initial crop with increased zoom-out and shoulder extension
+    total_height = int((h / FACE_HEIGHT_RATIO) * ZOOM_OUT_FACTOR)
+    top_space = int(total_height * TOP_SPACE_RATIO)
+    shoulder_space = int(h * SHOULDER_EXTENSION) # Use increased shoulder extension
+    
+    # Calculate crop coordinates to isolate the person
+    y1 = max(y - top_space, 0, hair_box[1])
+    y2 = min(y + h + shoulder_space, np_img_original.shape[0])
+    
+    target_aspect = PASSPORT_SIZE[0] / PASSPORT_SIZE[1]
+    # Apply ZOOM_OUT_FACTOR to required_width as well to ensure wider capture
+    required_width = int((y2 - y1) * target_aspect * ZOOM_OUT_FACTOR) 
+    
+    face_center = x + w // 2
+    x1 = max(face_center - required_width // 2, 0)
+    x2 = min(x1 + required_width, np_img_original.shape[1])
+    
+    # Ensure crop dimensions are valid
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError("Calculated crop dimensions are invalid. Please try another photo.")
 
-    # Desired face height in the final PASSPORT_SIZE
-    desired_face_height_in_passport = PASSPORT_SIZE[1] * FACE_HEIGHT_RATIO
+    # Perform initial crop to get the region of interest (the person)
+    cropped_for_rembg_np = np_img_original[y1:y2, x1:x2]
+    cropped_for_rembg_pil = Image.fromarray(cropped_for_rembg_np)
 
-    # Calculate scaling factor based on desired face height and detected face height
-    scale_factor = desired_face_height_in_passport / h
-
-    # Resize the entire image based on this scale factor
-    scaled_width = int(w_white * scale_factor)
-    scaled_height = int(h_white * scale_factor)
-    scaled_img_pil = img_white.resize((scaled_width, scaled_height), Image.Resampling.LANCZOS)
+    # Now, remove background from this cropped image
+    img_byte_arr_cropped = io.BytesIO()
+    cropped_for_rembg_pil.save(img_byte_arr_cropped, format='PNG')
+    img_nobg_cropped = remove(img_byte_arr_cropped.getvalue())
+    img_nobg_cropped_pil = Image.open(io.BytesIO(img_nobg_cropped)).convert("RGBA")
     
-    # Now, recalculate face coordinates on the scaled image
-    scaled_face_x = int(x * scale_factor)
-    scaled_face_y = int(y * scale_factor)
-    scaled_face_w = int(w * scale_factor)
-    scaled_face_h = int(h * scale_factor) # This should be approximately desired_face_height_in_passport
-
-    # Calculate the target position for the face within the final PASSPORT_SIZE
-    # Top of the face (head) should be at TOP_SPACE_RATIO of the passport photo's height
-    target_head_top_y_in_passport = int(PASSPORT_SIZE[1] * TOP_SPACE_RATIO)
+    # Create white background for the processed image
+    white_bg_final = Image.new("RGBA", img_nobg_cropped_pil.size, (255, 255, 255, 255))
+    img_white_final = Image.alpha_composite(white_bg_final, img_nobg_cropped_pil).convert("RGB")
     
-    # Center the face horizontally in the passport photo
-    target_face_center_x_in_passport = PASSPORT_SIZE[0] // 2
+    # Edge smoothing
+    img_white_final = img_white_final.filter(ImageFilter.GaussianBlur(radius=1.0)) # Increased blur radius
     
-    # Calculate the crop box coordinates on the scaled image
-    # The top of the crop should be such that the scaled_face_y aligns with target_head_top_y_in_passport
-    crop_y1 = scaled_face_y - target_head_top_y_in_passport
+    # Resize to passport size
+    passport_img = ImageOps.fit(img_white_final, PASSPORT_SIZE, method=Image.Resampling.LANCZOS)
     
-    # The left of the crop should be such that the scaled_face_center_x aligns with target_face_center_x_in_passport
-    crop_x1 = scaled_face_x + (scaled_face_w // 2) - target_face_center_x_in_passport
-
-    # Calculate crop bottom and right based on PASSPORT_SIZE dimensions
-    crop_y2 = crop_y1 + PASSPORT_SIZE[1]
-    crop_x2 = crop_x1 + PASSPORT_SIZE[0]
-
-    # Adjust crop box to stay within the bounds of the scaled image
-    # Shift if left edge is negative
-    if crop_x1 < 0:
-        crop_x2 -= crop_x1 # Increase right bound by the negative amount
-        crop_x1 = 0
-    # Shift if top edge is negative
-    if crop_y1 < 0:
-        crop_y2 -= crop_y1 # Increase bottom bound by the negative amount
-        crop_y1 = 0
-    
-    # Shift if right edge exceeds scaled image width
-    if crop_x2 > scaled_width:
-        crop_x1 -= (crop_x2 - scaled_width) # Decrease left bound
-        crop_x2 = scaled_width
-    # Shift if bottom edge exceeds scaled image height
-    if crop_y2 > scaled_height:
-        crop_y1 -= (crop_y2 - scaled_height) # Decrease top bound
-        crop_y2 = scaled_height
-
-    # Final check to ensure coordinates are not negative after adjustments
-    crop_x1 = max(0, crop_x1)
-    crop_y1 = max(0, crop_y1)
-    
-    # Perform the final crop on the scaled image
-    # Ensure crop dimensions are valid before cropping
-    if crop_x2 <= crop_x1 or crop_y2 <= crop_y1 or \
-       crop_x1 >= scaled_width or crop_y1 >= scaled_height:
-        raise ValueError("Calculated final crop dimensions are invalid or out of bounds. Please try another photo.")
-
-    final_cropped_pil = scaled_img_pil.crop((crop_x1, crop_y1, crop_x2, crop_y2))
-    
-    # Apply a light Gaussian blur for smoothing
-    final_img_smoothed = final_cropped_pil.filter(ImageFilter.GaussianBlur(radius=0.5)) 
-    
-    # The image should already be PASSPORT_SIZE due to the precise cropping.
-    # This final ImageOps.fit acts as a safeguard for exact dimensions and resampling quality.
-    passport_img = ImageOps.fit(final_img_smoothed, PASSPORT_SIZE, method=Image.Resampling.LANCZOS)
-    
-    # Final composition (should already have white background)
+    # Final composition (this step is mostly for consistency, as img_white_final is already RGB with white bg)
     final_img = Image.new("RGB", PASSPORT_SIZE, (255, 255, 255))
     final_img.paste(passport_img, (0, 0))
     
@@ -385,7 +345,7 @@ if uploaded_file:
             os.unlink(tmp_file.name) # Clean up the temporary file
         
         except Exception as e:
-            st.error(f"⚠️ Error: {str(e)}. Please try another photo or ensure your photo has a clear, front-facing face. Details: {e}")
+            st.error(f"⚠️ Error: {str(e)}. Please try another photo or ensure your photo has a clear, front-facing face.")
 
 # ============================================
 # Footer
