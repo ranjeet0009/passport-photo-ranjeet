@@ -5,15 +5,30 @@ from PIL import Image, ImageOps
 import tempfile
 from rembg import remove
 import io
-import dlib  # More accurate face detection
+import os
 
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
 FACE_HEIGHT_RATIO = 0.65  # Face should occupy 65% of photo height
 TOP_SPACE_RATIO = 0.15  # 15% space above head
 
-# Initialize dlib's face detector (more accurate than Haar cascades)
-detector = dlib.get_frontal_face_detector()
+# Load OpenCV's DNN face detection model (more accurate than Haar cascades)
+prototxt_path = "deploy.prototxt"
+model_path = "res10_300x300_ssd_iter_140000.caffemodel"
+
+# Download model files if they don't exist
+if not os.path.exists(prototxt_path) or not os.path.exists(model_path):
+    import urllib.request
+    urllib.request.urlretrieve(
+        "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
+        prototxt_path
+    )
+    urllib.request.urlretrieve(
+        "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel",
+        model_path
+    )
+
+net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
 
 # Title and instructions
 st.title("AI Passport Photo Generator")
@@ -36,23 +51,38 @@ def standardize_passport_photo(image):
     
     # Convert to numpy array for face detection
     np_img = np.array(img_white)
-    gray = cv2.cvtColor(np_img, cv2.COLOR_RGB2GRAY)
+    (h, w) = np_img.shape[:2]
     
-    # Detect faces using dlib (more accurate)
-    faces = detector(gray, 1)
-    if len(faces) == 0:
-        raise ValueError("No face detected")
+    # Detect faces using OpenCV DNN
+    blob = cv2.dnn.blobFromImage(cv2.resize(np_img, (300, 300)), 1.0,
+                                (300, 300), (104.0, 177.0, 123.0))
+    net.setInput(blob)
+    detections = net.forward()
     
-    # Get the largest face
-    face = max(faces, key=lambda f: f.width() * f.height())
+    # Find the face with highest confidence
+    max_confidence = 0
+    best_face = None
+    
+    for i in range(0, detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        if confidence > max_confidence:
+            max_confidence = confidence
+            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            (startX, startY, endX, endY) = box.astype("int")
+            best_face = (startX, startY, endX - startX, endY - startY)
+    
+    if best_face is None:
+        raise ValueError("No face detected with sufficient confidence")
+    
+    (x, y, w, h) = best_face
     
     # Calculate required dimensions
-    face_height = face.height()
+    face_height = h
     total_height = int(face_height / FACE_HEIGHT_RATIO)
     top_space = int(total_height * TOP_SPACE_RATIO)
     
     # Calculate crop coordinates
-    y1 = max(face.top() - top_space, 0)
+    y1 = max(y - top_space, 0)
     y2 = min(y1 + total_height, np_img.shape[0])
     
     # Calculate width maintaining aspect ratio
@@ -60,7 +90,7 @@ def standardize_passport_photo(image):
     required_width = int((y2 - y1) * target_aspect)
     
     # Center horizontally on face
-    face_center = face.left() + face.width() // 2
+    face_center = x + w // 2
     x1 = max(face_center - required_width // 2, 0)
     x2 = min(x1 + required_width, np_img.shape[1])
     
