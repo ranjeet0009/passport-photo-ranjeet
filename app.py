@@ -113,9 +113,9 @@ st.set_page_config(
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
 FACE_HEIGHT_RATIO = 0.50
-TOP_SPACE_RATIO = 0.25 # Adjusted top space ratio for more space above head
-SHOULDER_EXTENSION = 0.50 # Increased shoulder extension
-ZOOM_OUT_FACTOR = 1.50 # Increased zoom out factor
+TOP_SPACE_RATIO = 0.20 # Adjusted top space ratio for more space above head
+SHOULDER_EXTENSION = 0.35
+ZOOM_OUT_FACTOR = 1.20 # Adjusted zoom out factor for less aggressive zoom
 
 # Helper functions to convert images to base64 (moved to top)
 def image_to_base64(image):
@@ -258,17 +258,17 @@ def standardize_passport_photo(image):
     # Estimate hair region
     hair_box = detect_hair_region(np_img_original, best_face)
     
-    # Calculate dimensions for the initial crop with increased zoom-out and shoulder extension
+    # Calculate dimensions with new zoom-out
     total_height = int((h / FACE_HEIGHT_RATIO) * ZOOM_OUT_FACTOR)
     top_space = int(total_height * TOP_SPACE_RATIO)
-    shoulder_space = int(h * SHOULDER_EXTENSION) # Use increased shoulder extension
+    shoulder_space = int(h * SHOULDER_EXTENSION)
     
     # Calculate crop coordinates to isolate the person
     y1 = max(y - top_space, 0, hair_box[1])
     y2 = min(y + h + shoulder_space, np_img_original.shape[0])
     
     target_aspect = PASSPORT_SIZE[0] / PASSPORT_SIZE[1]
-    required_width = int((y2 - y1) * target_aspect) # Do not apply ZOOM_OUT_FACTOR here again
+    required_width = int((y2 - y1) * target_aspect * ZOOM_OUT_FACTOR)
     
     face_center = x + w // 2
     x1 = max(face_center - required_width // 2, 0)
