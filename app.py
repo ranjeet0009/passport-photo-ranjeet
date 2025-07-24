@@ -114,8 +114,8 @@ st.set_page_config(
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
 FACE_HEIGHT_RATIO = 0.50
 TOP_SPACE_RATIO = 0.20 # Adjusted top space ratio for more space above head
-SHOULDER_EXTENSION = 0.90 # Increased shoulder extension for more vertical coverage
-ZOOM_OUT_FACTOR = 1.60 # Increased zoom out factor for more overall breathing room
+SHOULDER_EXTENSION = 0.60 # Increased shoulder extension for more vertical coverage
+ZOOM_OUT_FACTOR = 1.30 # Moderate zoom out factor
 
 # Helper functions to convert images to base64 (moved to top)
 def image_to_base64(image):
