@@ -6,20 +6,22 @@ import tempfile
 from rembg import remove
 import io
 import os
+import base64 # Import base64 module
 
 # ============================================
-# Custom CSS for Beautiful UI
+# Custom CSS for Beautiful UI (Dark Theme)
 # ============================================
 st.markdown("""
 <style>
     /* Main container */
     .stApp {
-        background-color: #f5f7fa;
+        background-color: #1a1a1a; /* Dark background */
+        color: #e0e0e0; /* Light text color */
     }
     
     /* Header */
     .header {
-        color: #2c3e50;
+        color: #e0e0e0; /* Light header text */
         font-size: 2.5em;
         text-align: center;
         margin-bottom: 0.5em;
@@ -30,7 +32,8 @@ st.markdown("""
         border: 2px dashed #4a90e2;
         border-radius: 10px;
         padding: 2em;
-        background-color: #ffffff;
+        background-color: #2c2c2c; /* Darker background for uploader */
+        color: #e0e0e0; /* Light text */
     }
     
     /* Buttons */
@@ -53,9 +56,10 @@ st.markdown("""
     /* Cards for before/after */
     .card {
         border-radius: 10px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3); /* Darker shadow for dark theme */
         padding: 1em;
-        background-color: white;
+        background-color: #2c2c2c; /* Darker background for cards */
+        color: #e0e0e0; /* Light text */
     }
     
     /* Progress spinner */
@@ -65,13 +69,23 @@ st.markdown("""
     
     /* Sidebar */
     .sidebar .sidebar-content {
-        background-color: #2c3e50;
+        background-color: #000000; /* Black sidebar */
         color: white;
     }
     
     /* Error messages */
     .stAlert {
         border-radius: 8px;
+        background-color: #4a1c1c; /* Dark red for errors */
+        color: #ffcccc; /* Light red text */
+    }
+
+    /* Adjust text colors within the main content */
+    p {
+        color: #e0e0e0; /* Default paragraph text color */
+    }
+    h3 {
+        color: #e0e0e0; /* Default heading 3 text color */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -92,6 +106,17 @@ TOP_SPACE_RATIO = 0.30
 SHOULDER_EXTENSION = 0.35
 ZOOM_OUT_FACTOR = 1.25
 
+# Helper functions to convert images to base64 (moved to top)
+def image_to_base64(image):
+    buffered = io.BytesIO()
+    image.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
+
+def original_img_to_base64(image):
+    buffered = io.BytesIO()
+    image.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
+
 # ============================================
 # Beautiful Header
 # ============================================
@@ -102,7 +127,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("""
-<p style="text-align: center; color: #7f8c8d; font-size: 1.1em;">
+<p style="text-align: center; color: #b0b0b0; font-size: 1.1em;">
     Create perfect passport photos in seconds with AI technology
 </p>
 """, unsafe_allow_html=True)
@@ -149,16 +174,32 @@ def load_face_detection_model():
     
     if not os.path.exists(prototxt_path) or not os.path.exists(model_path):
         import urllib.request
-        urllib.request.urlretrieve(
-            "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
-            prototxt_path
-        )
-        urllib.request.urlretrieve(
-            "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel",
-            model_path
-        )
-    
-    return cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
+        # Download prototxt
+        try:
+            urllib.request.urlretrieve(
+                "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
+                prototxt_path
+            )
+        except Exception as e:
+            st.error(f"Error downloading deploy.prototxt: {e}")
+            return None
+        
+        # Download model
+        try:
+            urllib.request.urlretrieve(
+                "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel",
+                model_path
+            )
+        except Exception as e:
+            st.error(f"Error downloading caffemodel: {e}")
+            return None
+            
+    try:
+        net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
+        return net
+    except Exception as e:
+        st.error(f"Error loading face detection model: {e}")
+        return None
 
 net = load_face_detection_model()
 
@@ -186,9 +227,13 @@ def standardize_passport_photo(image):
     np_img = np.array(img_white)
     (h, w) = np_img.shape[:2]
     
+    # Check if face detection model is loaded
+    if net is None:
+        raise RuntimeError("Face detection model failed to load.")
+
     # Detect faces
     blob = cv2.dnn.blobFromImage(cv2.resize(np_img, (300, 300)), 1.0,
-                                (300, 300), (104.0, 177.0, 123.0))
+                                 (300, 300), (104.0, 177.0, 123.0))
     net.setInput(blob)
     detections = net.forward()
     
@@ -230,6 +275,10 @@ def standardize_passport_photo(image):
     x1 = max(face_center - required_width // 2, 0)
     x2 = min(x1 + required_width, np_img.shape[1])
     
+    # Ensure crop dimensions are valid
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError("Calculated crop dimensions are invalid. Please try another photo.")
+
     # Final crop
     cropped = np_img[y1:y2, x1:x2]
     passport_img = Image.fromarray(cropped)
@@ -240,7 +289,7 @@ def standardize_passport_photo(image):
     # Resize to passport size
     passport_img = ImageOps.fit(passport_img, PASSPORT_SIZE, method=Image.Resampling.LANCZOS)
     
-    # Final composition
+    # Final composition (still white background for the passport photo itself)
     final_img = Image.new("RGB", PASSPORT_SIZE, (255, 255, 255))
     final_img.paste(passport_img, (0, 0))
     
@@ -250,60 +299,50 @@ def standardize_passport_photo(image):
 # Main Processing Logic
 # ============================================
 if uploaded_file:
-    try:
-        original_img = Image.open(uploaded_file).convert("RGB")
-        
-        with st.spinner('✨ Creating your perfect passport photo...'):
-            result_img = standardize_passport_photo(original_img)
-        
-        # Display results in cards
-        st.markdown("""
-        <div style="display: flex; justify-content: space-between; margin: 2em 0;">
-            <div class="card" style="width: 48%;">
-                <h3 style="color: #2c3e50; text-align: center;">Original Photo</h3>
-                <img src="data:image/png;base64,{}" style="width: 100%; border-radius: 8px;">
+    if net is None: # Check if model loaded successfully before proceeding
+        st.error("Cannot process photo: Face detection model failed to load. Please check your internet connection and try again.")
+    else:
+        try:
+            original_img = Image.open(uploaded_file).convert("RGB")
+            
+            with st.spinner('✨ Creating your perfect passport photo...'):
+                result_img = standardize_passport_photo(original_img)
+            
+            # Display results in cards
+            st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; margin: 2em 0;">
+                <div class="card" style="width: 48%;">
+                    <h3 style="color: #e0e0e0; text-align: center;">Original Photo</h3>
+                    <img src="data:image/png;base64,{original_img_to_base64(original_img)}" style="width: 100%; border-radius: 8px;">
+                </div>
+                <div class="card" style="width: 48%;">
+                    <h3 style="color: #e0e0e0; text-align: center;">Passport Photo (25% Zoom Out)</h3>
+                    <img src="data:image/png;base64,{image_to_base64(result_img)}" style="width: 100%; border-radius: 8px;">
+                </div>
             </div>
-            <div class="card" style="width: 48%;">
-                <h3 style="color: #2c3e50; text-align: center;">Passport Photo (25% Zoom Out)</h3>
-                <img src="data:image/png;base64,{}" style="width: 100%; border-radius: 8px;">
-            </div>
-        </div>
-        """.format(
-            original_img_to_base64(original_img),
-            image_to_base64(result_img)
-        ), unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+            
+            # Download button
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
+                result_img.save(tmp_file.name, quality=100, subsampling=0)
+                st.download_button(
+                    "⬇️ Download Passport Photo",
+                    data=open(tmp_file.name, "rb").read(),
+                    file_name="passport_photo.jpg",
+                    mime="image/jpeg",
+                    help="Click to download your perfectly formatted passport photo"
+                )
+            os.unlink(tmp_file.name) # Clean up the temporary file
         
-        # Download button
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
-            result_img.save(tmp_file.name, quality=100, subsampling=0)
-            st.download_button(
-                "⬇️ Download Passport Photo",
-                data=open(tmp_file.name, "rb").read(),
-                file_name="passport_photo.jpg",
-                mime="image/jpeg",
-                help="Click to download your perfectly formatted passport photo"
-            )
-    
-    except Exception as e:
-        st.error(f"⚠️ Error: {str(e)}. Please try another photo.")
-
-# Helper function to convert images to base64
-def image_to_base64(image):
-    buffered = io.BytesIO()
-    image.save(buffered, format="PNG")
-    return buffered.getvalue().encode("base64").decode()
-
-def original_img_to_base64(image):
-    buffered = io.BytesIO()
-    image.save(buffered, format="PNG")
-    return buffered.getvalue().encode("base64").decode()
+        except Exception as e:
+            st.error(f"⚠️ Error: {str(e)}. Please try another photo or ensure your photo has a clear, front-facing face.")
 
 # ============================================
 # Footer
 # ============================================
 st.markdown("""
 <div style="text-align: center; margin-top: 3em; color: #7f8c8d; font-size: 0.9em;">
-    <hr style="border: 0.5px solid #ecf0f1;">
+    <hr style="border: 0.5px solid #3c3c3c;">
     <p>Passport Photo Pro - Create perfect passport photos in seconds</p>
     <p>© 2023 All Rights Reserved</p>
 </div>
