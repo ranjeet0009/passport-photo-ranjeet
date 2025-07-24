@@ -1,72 +1,64 @@
 import streamlit as st
-import numpy as np
-import cv2
 from PIL import Image, ImageOps
+import numpy as np
+import mediapipe as mp
 from rembg import remove
 import io
-import face_recognition
 
 st.set_page_config(page_title="Passport Photo Maker", layout="centered")
 
-st.title("🪪 AI Passport Photo Creator")
-st.write("Upload any photo, and get a clean passport photo with white background!")
+st.title("🪪 Passport Size Photo Generator (AI-Based)")
 
-uploaded_file = st.file_uploader("Upload a photo", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload your photo", type=["jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
-    # Load the uploaded image
+if uploaded_file:
+    # Load image
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Original Image", use_column_width=True)
+    image_np = np.array(image)
 
-    with st.spinner("Processing..."):
+    # Face detection using mediapipe
+    mp_face_detection = mp.solutions.face_detection
+    with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5) as face_detection:
+        results = face_detection.process(image_np)
 
-        # Convert image to numpy array
-        image_np = np.array(image)
+    if not results.detections:
+        st.error("No face detected. Please upload a photo with a clear front face.")
+    else:
+        # Get face bounding box
+        detection = results.detections[0]
+        bboxC = detection.location_data.relative_bounding_box
 
-        # Use face_recognition to locate faces
-        face_locations = face_recognition.face_locations(image_np)
+        ih, iw, _ = image_np.shape
+        x = int(bboxC.xmin * iw) - 30
+        y = int(bboxC.ymin * ih) - 50
+        w = int(bboxC.width * iw) + 60
+        h = int(bboxC.height * ih) + 100
 
-        if not face_locations:
-            st.error("No face detected. Please upload a clearer image with a visible face.")
-        else:
-            # Take first face found
-            top, right, bottom, left = face_locations[0]
+        x, y = max(x, 0), max(y, 0)
 
-            # Expand the box slightly for shoulders and top head
-            height = bottom - top
-            width = right - left
-            expand_y = int(height * 0.5)
-            expand_x = int(width * 0.3)
+        # Crop the face region
+        face_img = image.crop((x, y, x + w, y + h))
 
-            top = max(top - expand_y, 0)
-            bottom = min(bottom + expand_y, image_np.shape[0])
-            left = max(left - expand_x, 0)
-            right = min(right + expand_x, image_np.shape[1])
+        # Remove background
+        face_bytes = io.BytesIO()
+        face_img.save(face_bytes, format='PNG')
+        output = remove(face_bytes.getvalue())
 
-            face_crop = image_np[top:bottom, left:right]
+        # Convert back to Image
+        clean_img = Image.open(io.BytesIO(output)).convert("RGBA")
 
-            # Convert to PIL
-            face_pil = Image.fromarray(face_crop)
+        # Add white background
+        white_bg = Image.new("RGBA", clean_img.size, (255, 255, 255, 255))
+        final_img = Image.alpha_composite(white_bg, clean_img).convert("RGB")
 
-            # Remove background
-            buffered = io.BytesIO()
-            face_pil.save(buffered, format="PNG")
-            no_bg_data = remove(buffered.getvalue())
-            no_bg_image = Image.open(io.BytesIO(no_bg_data)).convert("RGBA")
+        # Resize to passport size (2x2 inches at 300 DPI = ~600x600 or 413x531 pixels)
+        passport_size = (413, 531)
+        final_passport = ImageOps.fit(final_img, passport_size, Image.LANCZOS)
 
-            # Replace transparent background with white
-            white_bg = Image.new("RGBA", no_bg_image.size, (255, 255, 255, 255))
-            final_image = Image.alpha_composite(white_bg, no_bg_image).convert("RGB")
+        st.success("✅ Passport photo generated successfully!")
+        st.image(final_passport, caption="Passport Size Photo", use_column_width=False)
 
-            # Resize to passport size (approx. 413x531 pixels)
-            passport_size = (413, 531)  # 3.5 x 4.5 cm at 300 DPI
-            final_image = ImageOps.fit(final_image, passport_size, method=Image.Resampling.LANCZOS)
-
-            st.success("Passport photo generated successfully!")
-            st.image(final_image, caption="Passport Size Photo", use_column_width=False)
-
-            # Provide download link
-            buf = io.BytesIO()
-            final_image.save(buf, format="JPEG")
-            byte_im = buf.getvalue()
-            st.download_button("📥 Download Passport Photo", data=byte_im, file_name="passport_photo.jpg", mime="image/jpeg")
+        # Download
+        img_io = io.BytesIO()
+        final_passport.save(img_io, format='JPEG')
+        st.download_button("📥 Download Passport Photo", data=img_io.getvalue(), file_name="passport_photo.jpg", mime="image/jpeg")
