@@ -105,7 +105,7 @@ st.markdown("""
 # App Configuration
 # ============================================
 st.set_page_config(
-    page_title="Passport Photo Pro",
+    page_title="Passport Photo Maker",
     page_icon="📸",
     layout="centered"
 )
@@ -133,7 +133,7 @@ def original_img_to_base64(image):
 # ============================================
 st.markdown("""
 <div class="header">
-    <span style="color: #4a90e2">📸 Passport Photo Pro</span>
+    <span style="color: #4a90e2">📸 Passport Photo Maker</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -353,7 +353,7 @@ if uploaded_file:
 st.markdown("""
 <div style="text-align: center; margin-top: 3em; color: #7f8c8d; font-size: 0.9em;">
     <hr style="border: 0.5px solid #3c3c3c;">
-    <p>Passport Photo Pro - Create perfect passport photos in seconds</p>
+    <p>Passport Photo Maker - Create perfect passport photos in seconds</p>
     <p>© 2023 All Rights Reserved</p>
 </div>
 """, unsafe_allow_html=True)
