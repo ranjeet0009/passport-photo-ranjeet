@@ -1,5 +1,6 @@
 streamlit
 rembg
-opencv-python
-pillow
+Pillow
 numpy
+opencv-python
+face-recognition
