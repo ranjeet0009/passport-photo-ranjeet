@@ -113,9 +113,9 @@ st.set_page_config(
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
 FACE_HEIGHT_RATIO = 0.50
-TOP_SPACE_RATIO = 0.15 # Reduced top space ratio
+TOP_SPACE_RATIO = 0.10 # Further reduced top space ratio
 SHOULDER_EXTENSION = 0.35
-ZOOM_OUT_FACTOR = 1.30 
+ZOOM_OUT_FACTOR = 1.40 # Increased zoom out factor
 
 # Helper functions to convert images to base64 (moved to top)
 def image_to_base64(image):
@@ -258,7 +258,7 @@ def standardize_passport_photo(image):
     # Estimate hair region
     hair_box = detect_hair_region(np_img_original, best_face)
     
-    # Calculate dimensions with 30% zoom-out
+    # Calculate dimensions with new zoom-out
     total_height = int((h / FACE_HEIGHT_RATIO) * ZOOM_OUT_FACTOR)
     top_space = int(total_height * TOP_SPACE_RATIO)
     shoulder_space = int(h * SHOULDER_EXTENSION)
