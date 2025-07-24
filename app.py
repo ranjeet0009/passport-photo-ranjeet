@@ -1,50 +1,71 @@
 import streamlit as st
-from PIL import Image, ImageOps
+import cv2
 import numpy as np
+from PIL import Image, ImageOps
+import tempfile
 from rembg import remove
-import io
 
-# Constants
-PASSPORT_SIZE = (413, 531)  # Standard 2x2 inch photo at 300 DPI
-
-st.set_page_config(page_title="Passport Photo Generator", layout="centered")
-st.title("🪪 Passport Size Photo Generator")
+# Title
+st.title("AI-Powered Passport Photo Maker")
 
 uploaded_file = st.file_uploader("Upload your photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    try:
-        # Load and preview
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Original Uploaded Image", use_column_width=True)
+    # Convert to PIL Image
+    image = Image.open(uploaded_file).convert("RGB")
+    
+    # Remove background using AI
+    st.write("Removing background...")
+    image_nobg = remove(image)
+    
+    # Convert to OpenCV image for face detection
+    open_cv_image = np.array(image_nobg)
+    open_cv_image = open_cv_image[:, :, ::-1].copy()
+    
+    # Convert transparent background to white
+    open_cv_image[np.all(open_cv_image == [0, 0, 0, 0], axis=2)] = [255, 255, 255, 255]
+    
+    # Convert back to 3-channel image (remove alpha channel)
+    open_cv_image = cv2.cvtColor(open_cv_image, cv2.COLOR_BGRA2BGR)
 
-        # Remove background
-        st.info("Processing image and removing background...")
-        img_bytes = io.BytesIO()
-        image.save(img_bytes, format="PNG")
-        img_bytes = img_bytes.getvalue()
-        output = remove(img_bytes)  # returns binary
+    # Load Haarcascade for face detection
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
 
-        # Load result into Pillow
-        cleaned = Image.open(io.BytesIO(output)).convert("RGBA")
+    if len(faces) == 0:
+        st.error("No face detected. Please upload a clear front-facing photo.")
+    else:
+        for (x, y, w, h) in faces:
+            margin = int(0.6 * h)
+            x1 = max(x - margin, 0)
+            y1 = max(y - margin, 0)
+            x2 = min(x + w + margin, open_cv_image.shape[1])
+            y2 = min(y + h + margin, open_cv_image.shape[0])
 
-        # Replace background with white
-        bg = Image.new("RGBA", cleaned.size, (255, 255, 255, 255))
-        final = Image.alpha_composite(bg, cleaned).convert("RGB")
+            face_img = open_cv_image[y1:y2, x1:x2]
 
-        # Resize and center crop to passport size
-        passport = ImageOps.fit(final, PASSPORT_SIZE, method=Image.LANCZOS, centering=(0.5, 0.5))
+            # Convert to PIL Image
+            face_pil = Image.fromarray(cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB))
 
-        # Show result
-        st.success("✅ Passport photo generated successfully!")
-        st.image(passport, caption="Passport Size Photo", use_column_width=False)
+            # Resize to passport photo size (35x45 mm @ 300 DPI = 413x531 pixels)
+            passport_size = (413, 531)
+            final_img = ImageOps.fit(face_pil, passport_size, method=Image.Resampling.LANCZOS)
 
-        # Download
-        buffer = io.BytesIO()
-        passport.save(buffer, format="JPEG")
-        st.download_button("📥 Download Passport Photo", buffer.getvalue(), file_name="passport_photo.jpg", mime="image/jpeg")
+            # Create white background image
+            white_bg = Image.new("RGB", passport_size, (255, 255, 255))
+            white_bg.paste(final_img, (0, 0), final_img.convert("RGBA") if final_img.mode == 'RGBA' else None)
 
-    except Exception as e:
-        st.error("⚠️ Something went wrong while processing the image.")
-        st.exception(e)
-        
+            st.image(white_bg, caption="Passport Photo", use_column_width=False)
+            st.success("Passport photo generated successfully!")
+
+            # Download
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
+                white_bg.save(tmp_file.name, quality=95)
+                st.download_button(
+                    "Download Passport Photo", 
+                    data=open(tmp_file.name, "rb").read(), 
+                    file_name="passport_photo.jpg", 
+                    mime="image/jpeg"
+                )
+            break
