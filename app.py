@@ -113,9 +113,9 @@ st.set_page_config(
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
 FACE_HEIGHT_RATIO = 0.50
-TOP_SPACE_RATIO = 0.25 # Adjusted top space ratio for more space above head
-SHOULDER_EXTENSION = 0.75 # Adjusted shoulder extension for better vertical coverage
-ZOOM_OUT_FACTOR = 1.50 # Adjusted zoom out factor for more overall breathing room
+TOP_SPACE_RATIO = 0.20 # Adjusted top space ratio for more space above head
+SHOULDER_EXTENSION = 0.60 # Increased shoulder extension for more vertical coverage
+ZOOM_OUT_FACTOR = 1.30 # Moderate zoom out factor
 
 # Helper functions to convert images to base64 (moved to top)
 def image_to_base64(image):
@@ -258,34 +258,22 @@ def standardize_passport_photo(image):
     # Estimate hair region
     hair_box = detect_hair_region(np_img_original, best_face)
     
-    # Calculate dimensions for the initial crop with adjusted zoom-out and shoulder extension
+    # Calculate dimensions for the initial crop with increased zoom-out and shoulder extension
     total_height = int((h / FACE_HEIGHT_RATIO) * ZOOM_OUT_FACTOR)
     top_space = int(total_height * TOP_SPACE_RATIO)
-    shoulder_space = int(h * SHOULDER_EXTENSION) # Use adjusted shoulder extension
+    shoulder_space = int(h * SHOULDER_EXTENSION) # Use increased shoulder extension
     
     # Calculate crop coordinates to isolate the person
     y1 = max(y - top_space, 0, hair_box[1])
     y2 = min(y + h + shoulder_space, np_img_original.shape[0])
     
     target_aspect = PASSPORT_SIZE[0] / PASSPORT_SIZE[1]
-    # Calculate required_width based on the actual cropped height to maintain aspect ratio
-    # Ensure the width is also scaled by ZOOM_OUT_FACTOR to provide enough horizontal room
-    required_width = int((y2 - y1) * target_aspect) 
-    
-    # To ensure shoulders are not cut, we need to make sure the required_width is large enough
-    # Let's consider the face width and apply a horizontal expansion factor
-    horizontal_expansion_factor = 1.8 # This factor determines how much wider than the face the crop should be
-    min_width_from_face = int(w * horizontal_expansion_factor)
-
-    # Take the maximum of the aspect-ratio-derived width and the face-based minimum width
-    final_required_width = max(required_width, min_width_from_face)
+    # Apply ZOOM_OUT_FACTOR to required_width as well to ensure wider capture
+    required_width = int((y2 - y1) * target_aspect * ZOOM_OUT_FACTOR) 
     
     face_center = x + w // 2
-    x1 = max(face_center - final_required_width // 2, 0)
-    x2 = min(x1 + final_required_width // 2, np_img_original.shape[1]) # Adjusted x2 calculation
-
-    # Re-calculate x2 based on x1 and final_required_width to avoid off-by-one or incorrect width
-    x2 = min(x1 + final_required_width, np_img_original.shape[1])
+    x1 = max(face_center - required_width // 2, 0)
+    x2 = min(x1 + required_width, np_img_original.shape[1])
     
     # Ensure crop dimensions are valid
     if x2 <= x1 or y2 <= y1:
