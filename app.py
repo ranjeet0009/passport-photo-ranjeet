@@ -9,10 +9,11 @@ import os
 
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
-FACE_HEIGHT_RATIO = 0.65  # Face should occupy 65% of photo height
-TOP_SPACE_RATIO = 0.15  # 15% space above head
+FACE_HEIGHT_RATIO = 0.60  # Reduced from 0.65 to include more head/shoulders
+TOP_SPACE_RATIO = 0.20  # Increased from 0.15 for more headroom
+SHOULDER_EXTENSION = 0.25  # Additional space below face for shoulders
 
-# Load OpenCV's DNN face detection model (more accurate than Haar cascades)
+# Load OpenCV's DNN face detection model
 prototxt_path = "deploy.prototxt"
 model_path = "res10_300x300_ssd_iter_140000.caffemodel"
 
@@ -31,11 +32,23 @@ if not os.path.exists(prototxt_path) or not os.path.exists(model_path):
 net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
 
 # Title and instructions
-st.title("AI Passport Photo Generator")
+st.title("Professional Passport Photo Generator")
 st.markdown("""
-Upload any photo and get a perfectly standardized passport photo.
-The AI will automatically center your face and adjust the zoom level.
+Upload any photo to get a perfectly standardized passport photo with:
+- Centered face
+- Proper headroom
+- Shoulders included
+- White background
 """)
+
+def detect_hair_region(np_img, face_box):
+    """Estimate hair region above detected face"""
+    (x, y, w, h) = face_box
+    # Extend above face by 30% of face height for hair
+    hair_height = int(h * 0.3)
+    hair_y1 = max(y - hair_height, 0)
+    hair_box = (x, hair_y1, w, hair_height)
+    return hair_box
 
 def standardize_passport_photo(image):
     """Process image to standardized passport photo"""
@@ -76,14 +89,18 @@ def standardize_passport_photo(image):
     
     (x, y, w, h) = best_face
     
-    # Calculate required dimensions
+    # Estimate hair region
+    hair_box = detect_hair_region(np_img, best_face)
+    
+    # Calculate required dimensions with adjustments
     face_height = h
     total_height = int(face_height / FACE_HEIGHT_RATIO)
     top_space = int(total_height * TOP_SPACE_RATIO)
+    shoulder_space = int(face_height * SHOULDER_EXTENSION)
     
-    # Calculate crop coordinates
-    y1 = max(y - top_space, 0)
-    y2 = min(y1 + total_height, np_img.shape[0])
+    # Calculate crop coordinates with hair protection
+    y1 = max(y - top_space, 0, hair_box[1])  # Don't crop above detected hair
+    y2 = min(y + h + shoulder_space, np_img.shape[0])
     
     # Calculate width maintaining aspect ratio
     target_aspect = PASSPORT_SIZE[0] / PASSPORT_SIZE[1]
@@ -101,11 +118,15 @@ def standardize_passport_photo(image):
     # Crop and resize
     cropped = np_img[y1:y2, x1:x2]
     passport_img = Image.fromarray(cropped)
+    
+    # Apply slight blur to hair edges to prevent harsh cuts
+    passport_img = passport_img.filter(ImageFilter.GaussianBlur(radius=0.7))
+    
     passport_img = ImageOps.fit(passport_img, PASSPORT_SIZE, method=Image.Resampling.LANCZOS)
     
-    # Final white background
+    # Final white background with better edge handling
     final_img = Image.new("RGB", PASSPORT_SIZE, (255, 255, 255))
-    final_img.paste(passport_img, (0, 0))
+    final_img.paste(passport_img, (0, 0), passport_img.convert("RGBA") if passport_img.mode == 'RGBA' else None)
     
     return final_img
 
@@ -116,7 +137,7 @@ if uploaded_file:
     try:
         original_img = Image.open(uploaded_file).convert("RGB")
         
-        with st.spinner('Generating standardized passport photo...'):
+        with st.spinner('Generating professional passport photo...'):
             result_img = standardize_passport_photo(original_img)
         
         # Display results
@@ -124,7 +145,7 @@ if uploaded_file:
         with col1:
             st.image(original_img, caption="Original Photo", use_column_width=True)
         with col2:
-            st.image(result_img, caption="Passport Photo", use_column_width=True)
+            st.image(result_img, caption="Professional Passport Photo", use_column_width=True)
         
         # Download button
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
@@ -141,8 +162,11 @@ if uploaded_file:
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
 
-# Add requirements information
-st.sidebar.markdown("### Requirements:")
-st.sidebar.markdown("- Face should be clearly visible")
-st.sidebar.markdown("- No extreme angles")
-st.sidebar.markdown("- Well-lit environment")
+# Add styling information
+st.sidebar.markdown("""
+### Photo Requirements:
+- Front-facing, clear view of face
+- Neutral expression
+- No hats or heavy headwear
+- Plain background preferred
+""")
