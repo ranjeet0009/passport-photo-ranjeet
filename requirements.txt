@@ -1,5 +1,4 @@
 streamlit
 rembg
 Pillow
-face_recognition
 numpy
