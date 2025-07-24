@@ -1,6 +1,5 @@
 streamlit
-opencv-python-headless
 rembg
-onnxruntime
-numpy
 Pillow
+face_recognition
+numpy
