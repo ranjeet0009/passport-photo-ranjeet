@@ -1,5 +1,5 @@
 streamlit
+rembg
 opencv-python-headless
-Pillow
 numpy
-requests
+pillow
