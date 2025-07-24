@@ -12,7 +12,7 @@ PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
 FACE_HEIGHT_RATIO = 0.55  # Face occupies 55% of photo height
 TOP_SPACE_RATIO = 0.25  # 25% space above head
 SHOULDER_EXTENSION = 0.30  # 30% additional space below face for shoulders
-ZOOM_OUT_FACTOR = 1.15  # 15% zoom out
+ZOOM_OUT_FACTOR = 1.20  # 15% zoom out
 
 # Load OpenCV's DNN face detection model
 prototxt_path = "deploy.prototxt"
