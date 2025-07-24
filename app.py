@@ -1,7 +1,7 @@
 import streamlit as st
 import cv2
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFilter  # Added ImageFilter here
 import tempfile
 from rembg import remove
 import io
@@ -9,9 +9,9 @@ import os
 
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
-FACE_HEIGHT_RATIO = 0.60  # Reduced from 0.65 to include more head/shoulders
-TOP_SPACE_RATIO = 0.20  # Increased from 0.15 for more headroom
-SHOULDER_EXTENSION = 0.25  # Additional space below face for shoulders
+FACE_HEIGHT_RATIO = 0.60  # Face occupies 60% of photo height
+TOP_SPACE_RATIO = 0.20  # 20% space above head
+SHOULDER_EXTENSION = 0.25  # 25% additional space below face for shoulders
 
 # Load OpenCV's DNN face detection model
 prototxt_path = "deploy.prototxt"
@@ -119,7 +119,7 @@ def standardize_passport_photo(image):
     cropped = np_img[y1:y2, x1:x2]
     passport_img = Image.fromarray(cropped)
     
-    # Apply slight blur to hair edges to prevent harsh cuts
+    # Apply slight blur to edges for smoother transitions
     passport_img = passport_img.filter(ImageFilter.GaussianBlur(radius=0.7))
     
     passport_img = ImageOps.fit(passport_img, PASSPORT_SIZE, method=Image.Resampling.LANCZOS)
