@@ -9,10 +9,10 @@ import os
 
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
-FACE_HEIGHT_RATIO = 0.55  # Face occupies 55% of photo height
-TOP_SPACE_RATIO = 0.25  # 25% space above head
-SHOULDER_EXTENSION = 0.30  # 30% additional space below face for shoulders
-ZOOM_OUT_FACTOR = 1.20  # 15% zoom out
+FACE_HEIGHT_RATIO = 0.50  # Reduced from 0.55 for more zoom-out (face occupies 50% of height)
+TOP_SPACE_RATIO = 0.30  # Increased from 0.25 for more headroom
+SHOULDER_EXTENSION = 0.35  # Increased from 0.30 for more shoulder space
+ZOOM_OUT_FACTOR = 1.25  # 25% zoom out (increased from 1.15)
 
 # Load OpenCV's DNN face detection model
 prototxt_path = "deploy.prototxt"
@@ -32,12 +32,12 @@ if not os.path.exists(prototxt_path) or not os.path.exists(model_path):
 
 net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
 
-# Title and instructions
+# UI Setup
 st.title("Professional Passport Photo Generator")
 st.markdown("""
 Upload any photo to get a perfectly standardized passport photo with:
 - Centered face
-- Full head coverage
+- Full head coverage (25% zoomed out)
 - Proper shoulder inclusion
 - White background
 """)
@@ -45,7 +45,7 @@ Upload any photo to get a perfectly standardized passport photo with:
 def detect_hair_region(np_img, face_box):
     """Estimate hair region above detected face"""
     (x, y, w, h) = face_box
-    hair_height = int(h * 0.4)  # 40% of face height for hair coverage
+    hair_height = int(h * 0.5)  # Increased to 50% of face height for better hair coverage
     hair_y1 = max(y - hair_height, 0)
     return (x, hair_y1, w, hair_height)
 
@@ -91,16 +91,16 @@ def standardize_passport_photo(image):
     # Estimate hair region
     hair_box = detect_hair_region(np_img, best_face)
     
-    # Calculate dimensions with zoom-out adjustments
+    # Calculate dimensions with 25% zoom-out
     total_height = int((h / FACE_HEIGHT_RATIO) * ZOOM_OUT_FACTOR)
     top_space = int(total_height * TOP_SPACE_RATIO)
     shoulder_space = int(h * SHOULDER_EXTENSION)
     
-    # Calculate crop coordinates with zoom-out
+    # Calculate crop coordinates with 25% zoom-out
     y1 = max(y - top_space, 0, hair_box[1])
     y2 = min(y + h + shoulder_space, np_img.shape[0])
     
-    # Calculate width with aspect ratio and zoom-out
+    # Calculate width with aspect ratio and 25% zoom-out
     target_aspect = PASSPORT_SIZE[0] / PASSPORT_SIZE[1]
     required_width = int((y2 - y1) * target_aspect * ZOOM_OUT_FACTOR)
     
@@ -109,12 +109,18 @@ def standardize_passport_photo(image):
     x1 = max(face_center - required_width // 2, 0)
     x2 = min(x1 + required_width, np_img.shape[1])
     
-    # Final crop with zoom-out
+    # Adjust if we're at image boundaries
+    if x2 - x1 < required_width:
+        x1 = max(x2 - required_width, 0)
+    if y2 - y1 < total_height:
+        y1 = max(y2 - total_height, 0)
+    
+    # Final crop with 25% zoom-out
     cropped = np_img[y1:y2, x1:x2]
     passport_img = Image.fromarray(cropped)
     
     # Gentle edge smoothing
-    passport_img = passport_img.filter(ImageFilter.GaussianBlur(radius=0.5))
+    passport_img = passport_img.filter(ImageFilter.GaussianBlur(radius=0.8))
     
     # Resize to passport size
     passport_img = ImageOps.fit(passport_img, PASSPORT_SIZE, method=Image.Resampling.LANCZOS)
@@ -132,7 +138,7 @@ if uploaded_file:
     try:
         original_img = Image.open(uploaded_file).convert("RGB")
         
-        with st.spinner('Creating perfect passport photo...'):
+        with st.spinner('Generating 25% zoomed-out passport photo...'):
             result_img = standardize_passport_photo(original_img)
         
         # Display comparison
@@ -140,13 +146,13 @@ if uploaded_file:
         with col1:
             st.image(original_img, caption="Original Photo", use_column_width=True)
         with col2:
-            st.image(result_img, caption="Perfect Passport Photo", use_column_width=True)
+            st.image(result_img, caption="Passport Photo (25% zoomed out)", use_column_width=True)
         
         # Download
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
-            result_img.save(tmp_file.name, quality=100)
+            result_img.save(tmp_file.name, quality=100, subsampling=0)
             st.download_button(
-                "Download Photo",
+                "Download Passport Photo",
                 data=open(tmp_file.name, "rb").read(),
                 file_name="passport_photo.jpg",
                 mime="image/jpeg"
@@ -157,9 +163,9 @@ if uploaded_file:
 
 # Requirements
 st.sidebar.markdown("""
-### Perfect Passport Photos:
-- Face centered naturally
-- Full head and hair visible
-- Professional shoulder framing
-- Compliant with official standards
+### Photo Guidelines:
+- Face should be clearly visible
+- Include natural head and shoulders
+- Well-lit environment recommended
+- Neutral background works best
 """)
