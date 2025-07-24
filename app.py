@@ -113,9 +113,9 @@ st.set_page_config(
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
 FACE_HEIGHT_RATIO = 0.50
-TOP_SPACE_RATIO = 0.25 # Adjusted top space ratio for more space above head
-SHOULDER_EXTENSION = 0.50 # Increased shoulder extension
-ZOOM_OUT_FACTOR = 1.50 # Increased zoom out factor
+TOP_SPACE_RATIO = 0.20 # Adjusted top space ratio for more space above head
+SHOULDER_EXTENSION = 0.60 # Increased shoulder extension for more vertical coverage
+ZOOM_OUT_FACTOR = 1.30 # Moderate zoom out factor
 
 # Helper functions to convert images to base64 (moved to top)
 def image_to_base64(image):
@@ -268,7 +268,8 @@ def standardize_passport_photo(image):
     y2 = min(y + h + shoulder_space, np_img_original.shape[0])
     
     target_aspect = PASSPORT_SIZE[0] / PASSPORT_SIZE[1]
-    required_width = int((y2 - y1) * target_aspect) # Do not apply ZOOM_OUT_FACTOR here again
+    # Apply ZOOM_OUT_FACTOR to required_width as well to ensure wider capture
+    required_width = int((y2 - y1) * target_aspect * ZOOM_OUT_FACTOR) 
     
     face_center = x + w // 2
     x1 = max(face_center - required_width // 2, 0)
