@@ -348,7 +348,7 @@ if uploaded_file:
 
 # ============================================
 # Footer
-============================================
+# ============================================
 st.markdown("""
 <div style="text-align: center; margin-top: 3em; color: #7f8c8d; font-size: 0.9em;">
     <hr style="border: 0.5px solid #3c3c3c;">
