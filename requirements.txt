@@ -3,4 +3,4 @@ opencv-python-headless
 Pillow
 numpy
 rembg
-requests
+dlib
