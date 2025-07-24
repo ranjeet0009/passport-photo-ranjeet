@@ -1,52 +1,44 @@
 import streamlit as st
-import cv2
+from PIL import Image, ImageOps
 import numpy as np
 from rembg import remove
-from PIL import Image
+import face_recognition
+import io
 
-st.title("Passport Size Photo Cropper and Background Remover")
+st.title("🎓 Passport Size Photo Generator")
+st.markdown("Upload any photo — the app will detect the face, crop it, remove background, and output a **2x2 inch passport-size photo with white background** at 300 DPI.")
 
-uploaded_file = st.file_uploader("Upload your image", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("📤 Upload your photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, 1)
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Original Image", use_column_width=True)
 
-    # Convert BGR to RGB for display
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    st.image(img_rgb, caption='Original Image', use_column_width=True)
+    # Step 1: Remove Background
+    no_bg = remove(image)
 
-    # Load Haar cascade for face detection
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+    # Step 2: Face Detection using AI (face_recognition)
+    image_np = np.array(no_bg)
+    face_locations = face_recognition.face_locations(image_np)
 
-    if len(faces) == 0:
-        st.warning("No face detected.")
+    if face_locations:
+        top, right, bottom, left = face_locations[0]
+        face_image = no_bg.crop((left, top, right, bottom))
+
+        # Step 3: Resize to 2x2 inch at 300 DPI (600x600 px)
+        passport_size = (600, 600)
+        face_image = ImageOps.fit(face_image, passport_size, method=Image.LANCZOS)
+
+        # Step 4: Paste on white background
+        final_img = Image.new("RGB", passport_size, (255, 255, 255))
+        final_img.paste(face_image, (0, 0))
+
+        st.image(final_img, caption="🪪 Final Passport Photo", use_column_width=False)
+
+        # Download
+        img_bytes = io.BytesIO()
+        final_img.save(img_bytes, format="JPEG", dpi=(300, 300))
+        st.download_button("📥 Download Passport Photo", data=img_bytes.getvalue(), file_name="passport_photo.jpg", mime="image/jpeg")
+
     else:
-        for (x, y, w, h) in faces:
-            padding = 40
-            x1 = max(x - padding, 0)
-            y1 = max(y - padding, 0)
-            x2 = min(x + w + padding, img.shape[1])
-            y2 = min(y + h + padding, img.shape[0])
-
-            face_crop = img[y1:y2, x1:x2]
-
-            # Convert to PIL for rembg
-            face_pil = Image.fromarray(cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB))
-
-            # Remove background
-            no_bg = remove(face_pil)
-
-            # Replace background with white
-            output = Image.new("RGBA", no_bg.size, (255, 255, 255, 255))
-            output.paste(no_bg, mask=no_bg.split()[3])
-
-            # Resize to passport size: 413x531 px (approx 35x45 mm at 300dpi)
-            output = output.resize((413, 531))
-
-            st.image(output, caption="Final Passport Photo", use_column_width=False)
-
-            # Download button
-            st.download_button("Download Passport Photo", data=output.tobytes(), file_name="passport_photo.png", mime="image/png")
+        st.error("😔 Could not detect face. Please upload a clear front-facing photo.")
