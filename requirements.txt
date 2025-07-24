@@ -1,4 +1,6 @@
 streamlit
-rembg
+opencv-python-headless
 Pillow
 numpy
+rembg
+requests
