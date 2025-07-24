@@ -1,3 +1,5 @@
 streamlit
 rembg
-Pillow
+opencv-python
+pillow
+numpy
