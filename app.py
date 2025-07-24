@@ -39,7 +39,7 @@ st.markdown("""
     /* Buttons */
     .stButton>button {
         background-color: #4a90e2;
-        color: white;
+        color: black; /* Changed button font color to black */
         border-radius: 8px;
         padding: 0.5em 1em;
         font-weight: bold;
@@ -69,7 +69,7 @@ st.markdown("""
     
     /* Sidebar */
     .sidebar .sidebar-content {
-        background-color: #000000; /* Black sidebar */
+        background-color: #2c2c2c; /* Changed sidebar background color */
         color: white;
     }
     
