@@ -67,10 +67,21 @@ st.markdown("""
         color: #4a90e2;
     }
     
-    /* Sidebar */
-    .sidebar .sidebar-content {
+    /* Sidebar - Targeting Streamlit's internal data-testid for better control */
+    [data-testid="stSidebar"] {
         background-color: #2c2c2c; /* Changed sidebar background color */
-        color: white;
+    }
+    [data-testid="stSidebarContent"] {
+        background-color: #2c2c2c; /* Ensure content area also gets the background */
+        color: white; /* Ensure text inside sidebar is white */
+    }
+    /* Specific styling for elements within the sidebar if needed */
+    [data-testid="stSidebarContent"] h2, 
+    [data-testid="stSidebarContent"] ol, 
+    [data-testid="stSidebarContent"] ul, 
+    [data-testid="stSidebarContent"] li,
+    [data-testid="stSidebarContent"] small {
+        color: white !important; /* Force white text for all sidebar elements */
     }
     
     /* Error messages */
