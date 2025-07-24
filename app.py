@@ -354,6 +354,6 @@ st.markdown("""
 <div style="text-align: center; margin-top: 3em; color: #7f8c8d; font-size: 0.9em;">
     <hr style="border: 0.5px solid #3c3c3c;">
     <p>Passport Photo Maker - Create perfect passport photos in seconds</p>
-    <p>© 2023 All Rights Reserved</p>
+    <p>© 2025 All Rights Reserved with MIT-WPU</p>
 </div>
 """, unsafe_allow_html=True)
