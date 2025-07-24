@@ -7,50 +7,171 @@ from rembg import remove
 import io
 import os
 
+# ============================================
+# Custom CSS for Beautiful UI
+# ============================================
+st.markdown("""
+<style>
+    /* Main container */
+    .stApp {
+        background-color: #f5f7fa;
+    }
+    
+    /* Header */
+    .header {
+        color: #2c3e50;
+        font-size: 2.5em;
+        text-align: center;
+        margin-bottom: 0.5em;
+    }
+    
+    /* File uploader */
+    .stFileUploader > div {
+        border: 2px dashed #4a90e2;
+        border-radius: 10px;
+        padding: 2em;
+        background-color: #ffffff;
+    }
+    
+    /* Buttons */
+    .stButton>button {
+        background-color: #4a90e2;
+        color: white;
+        border-radius: 8px;
+        padding: 0.5em 1em;
+        font-weight: bold;
+        border: none;
+        width: 100%;
+        transition: all 0.3s;
+    }
+    
+    .stButton>button:hover {
+        background-color: #357abd;
+        transform: scale(1.02);
+    }
+    
+    /* Cards for before/after */
+    .card {
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        padding: 1em;
+        background-color: white;
+    }
+    
+    /* Progress spinner */
+    .stSpinner>div {
+        color: #4a90e2;
+    }
+    
+    /* Sidebar */
+    .sidebar .sidebar-content {
+        background-color: #2c3e50;
+        color: white;
+    }
+    
+    /* Error messages */
+    .stAlert {
+        border-radius: 8px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================
+# App Configuration
+# ============================================
+st.set_page_config(
+    page_title="Passport Photo Pro",
+    page_icon="📸",
+    layout="centered"
+)
+
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
-FACE_HEIGHT_RATIO = 0.50  # Reduced from 0.55 for more zoom-out (face occupies 50% of height)
-TOP_SPACE_RATIO = 0.30  # Increased from 0.25 for more headroom
-SHOULDER_EXTENSION = 0.35  # Increased from 0.30 for more shoulder space
-ZOOM_OUT_FACTOR = 1.25  # 25% zoom out (increased from 1.15)
+FACE_HEIGHT_RATIO = 0.50
+TOP_SPACE_RATIO = 0.30
+SHOULDER_EXTENSION = 0.35
+ZOOM_OUT_FACTOR = 1.25
 
-# Load OpenCV's DNN face detection model
-prototxt_path = "deploy.prototxt"
-model_path = "res10_300x300_ssd_iter_140000.caffemodel"
-
-# Download model files if they don't exist
-if not os.path.exists(prototxt_path) or not os.path.exists(model_path):
-    import urllib.request
-    urllib.request.urlretrieve(
-        "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
-        prototxt_path
-    )
-    urllib.request.urlretrieve(
-        "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel",
-        model_path
-    )
-
-net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
-
-# UI Setup
-st.title("Professional Passport Photo Generator")
+# ============================================
+# Beautiful Header
+# ============================================
 st.markdown("""
-Upload any photo to get a perfectly standardized passport photo with:
-- Centered face
-- Full head coverage (25% zoomed out)
-- Proper shoulder inclusion
-- White background
-""")
+<div class="header">
+    <span style="color: #4a90e2">📸 Passport Photo Pro</span>
+</div>
+""", unsafe_allow_html=True)
 
+st.markdown("""
+<p style="text-align: center; color: #7f8c8d; font-size: 1.1em;">
+    Create perfect passport photos in seconds with AI technology
+</p>
+""", unsafe_allow_html=True)
+
+# ============================================
+# Sidebar with Instructions
+# ============================================
+with st.sidebar:
+    st.markdown("""
+    <h2 style="color: white;">📋 Instructions</h2>
+    <ol style="color: white;">
+        <li>Upload a clear front-facing photo</li>
+        <li>Ensure your face is visible</li>
+        <li>Download your perfect passport photo</li>
+    </ol>
+    
+    <h2 style="color: white;">✨ Tips</h2>
+    <ul style="color: white;">
+        <li>Use a plain background if possible</li>
+        <li>Face the camera directly</li>
+        <li>Keep a neutral expression</li>
+    </ul>
+    
+    <div style="margin-top: 2em; text-align: center;">
+        <small style="color: #bdc3c7;">Your photos are processed securely and never stored.</small>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ============================================
+# Main Content
+# ============================================
+# File uploader with custom styling
+uploaded_file = st.file_uploader(
+    "Drag & drop your photo here or click to browse",
+    type=["jpg", "jpeg", "png"],
+    help="We support JPG, JPEG, and PNG formats"
+)
+
+# Load face detection model
+@st.cache_resource
+def load_face_detection_model():
+    prototxt_path = "deploy.prototxt"
+    model_path = "res10_300x300_ssd_iter_140000.caffemodel"
+    
+    if not os.path.exists(prototxt_path) or not os.path.exists(model_path):
+        import urllib.request
+        urllib.request.urlretrieve(
+            "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
+            prototxt_path
+        )
+        urllib.request.urlretrieve(
+            "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel",
+            model_path
+        )
+    
+    return cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
+
+net = load_face_detection_model()
+
+# ============================================
+# Photo Processing Functions
+# ============================================
 def detect_hair_region(np_img, face_box):
-    """Estimate hair region above detected face"""
     (x, y, w, h) = face_box
-    hair_height = int(h * 0.5)  # Increased to 50% of face height for better hair coverage
+    hair_height = int(h * 0.5)
     hair_y1 = max(y - hair_height, 0)
     return (x, hair_y1, w, hair_height)
 
 def standardize_passport_photo(image):
-    """Process image to standardized passport photo"""
     # Remove background
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PNG')
@@ -65,7 +186,7 @@ def standardize_passport_photo(image):
     np_img = np.array(img_white)
     (h, w) = np_img.shape[:2]
     
-    # Detect faces using OpenCV DNN
+    # Detect faces
     blob = cv2.dnn.blobFromImage(cv2.resize(np_img, (300, 300)), 1.0,
                                 (300, 300), (104.0, 177.0, 123.0))
     net.setInput(blob)
@@ -96,30 +217,24 @@ def standardize_passport_photo(image):
     top_space = int(total_height * TOP_SPACE_RATIO)
     shoulder_space = int(h * SHOULDER_EXTENSION)
     
-    # Calculate crop coordinates with 25% zoom-out
+    # Calculate crop coordinates
     y1 = max(y - top_space, 0, hair_box[1])
     y2 = min(y + h + shoulder_space, np_img.shape[0])
     
-    # Calculate width with aspect ratio and 25% zoom-out
+    # Calculate width with aspect ratio
     target_aspect = PASSPORT_SIZE[0] / PASSPORT_SIZE[1]
     required_width = int((y2 - y1) * target_aspect * ZOOM_OUT_FACTOR)
     
-    # Center horizontally with zoom-out
+    # Center horizontally
     face_center = x + w // 2
     x1 = max(face_center - required_width // 2, 0)
     x2 = min(x1 + required_width, np_img.shape[1])
     
-    # Adjust if we're at image boundaries
-    if x2 - x1 < required_width:
-        x1 = max(x2 - required_width, 0)
-    if y2 - y1 < total_height:
-        y1 = max(y2 - total_height, 0)
-    
-    # Final crop with 25% zoom-out
+    # Final crop
     cropped = np_img[y1:y2, x1:x2]
     passport_img = Image.fromarray(cropped)
     
-    # Gentle edge smoothing
+    # Edge smoothing
     passport_img = passport_img.filter(ImageFilter.GaussianBlur(radius=0.8))
     
     # Resize to passport size
@@ -131,41 +246,65 @@ def standardize_passport_photo(image):
     
     return final_img
 
-# File uploader and processing
-uploaded_file = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"])
-
+# ============================================
+# Main Processing Logic
+# ============================================
 if uploaded_file:
     try:
         original_img = Image.open(uploaded_file).convert("RGB")
         
-        with st.spinner('Generating 25% zoomed-out passport photo...'):
+        with st.spinner('✨ Creating your perfect passport photo...'):
             result_img = standardize_passport_photo(original_img)
         
-        # Display comparison
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image(original_img, caption="Original Photo", use_column_width=True)
-        with col2:
-            st.image(result_img, caption="Passport Photo (25% zoomed out)", use_column_width=True)
+        # Display results in cards
+        st.markdown("""
+        <div style="display: flex; justify-content: space-between; margin: 2em 0;">
+            <div class="card" style="width: 48%;">
+                <h3 style="color: #2c3e50; text-align: center;">Original Photo</h3>
+                <img src="data:image/png;base64,{}" style="width: 100%; border-radius: 8px;">
+            </div>
+            <div class="card" style="width: 48%;">
+                <h3 style="color: #2c3e50; text-align: center;">Passport Photo (25% Zoom Out)</h3>
+                <img src="data:image/png;base64,{}" style="width: 100%; border-radius: 8px;">
+            </div>
+        </div>
+        """.format(
+            original_img_to_base64(original_img),
+            image_to_base64(result_img)
+        ), unsafe_allow_html=True)
         
-        # Download
+        # Download button
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
             result_img.save(tmp_file.name, quality=100, subsampling=0)
             st.download_button(
-                "Download Passport Photo",
+                "⬇️ Download Passport Photo",
                 data=open(tmp_file.name, "rb").read(),
                 file_name="passport_photo.jpg",
-                mime="image/jpeg"
+                mime="image/jpeg",
+                help="Click to download your perfectly formatted passport photo"
             )
     
     except Exception as e:
-        st.error(f"Error: {str(e)}. Please try another photo.")
+        st.error(f"⚠️ Error: {str(e)}. Please try another photo.")
 
-# Requirements
-st.sidebar.markdown("""
-### Photo Guidelines:
-- Face should be clearly visible
-- Include natural head and shoulders
-- Well-lit environment recommended
-- Neutral background works best
-""")
+# Helper function to convert images to base64
+def image_to_base64(image):
+    buffered = io.BytesIO()
+    image.save(buffered, format="PNG")
+    return buffered.getvalue().encode("base64").decode()
+
+def original_img_to_base64(image):
+    buffered = io.BytesIO()
+    image.save(buffered, format="PNG")
+    return buffered.getvalue().encode("base64").decode()
+
+# ============================================
+# Footer
+# ============================================
+st.markdown("""
+<div style="text-align: center; margin-top: 3em; color: #7f8c8d; font-size: 0.9em;">
+    <hr style="border: 0.5px solid #ecf0f1;">
+    <p>Passport Photo Pro - Create perfect passport photos in seconds</p>
+    <p>© 2023 All Rights Reserved</p>
+</div>
+""", unsafe_allow_html=True)
