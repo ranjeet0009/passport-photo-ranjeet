@@ -113,9 +113,9 @@ st.set_page_config(
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
 FACE_HEIGHT_RATIO = 0.50
-TOP_SPACE_RATIO = 0.12 # Adjusted top space ratio for a bit more space
+TOP_SPACE_RATIO = 0.20 # Adjusted top space ratio for more space above head
 SHOULDER_EXTENSION = 0.35
-ZOOM_OUT_FACTOR = 1.35 # Adjusted zoom out factor
+ZOOM_OUT_FACTOR = 1.20 # Adjusted zoom out factor for less aggressive zoom
 
 # Helper functions to convert images to base64 (moved to top)
 def image_to_base64(image):
@@ -348,7 +348,7 @@ if uploaded_file:
 
 # ============================================
 # Footer
-# ============================================
+============================================
 st.markdown("""
 <div style="text-align: center; margin-top: 3em; color: #7f8c8d; font-size: 0.9em;">
     <hr style="border: 0.5px solid #3c3c3c;">
