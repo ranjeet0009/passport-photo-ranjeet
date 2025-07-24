@@ -9,16 +9,16 @@ import os
 
 # Constants
 PASSPORT_SIZE = (413, 531)  # 35x45mm @ 300 DPI
-FACE_HEIGHT_RATIO = 0.55  # Reduced from 0.60 for more zoom-out
-TOP_SPACE_RATIO = 0.25  # Increased from 0.20 for more headroom
-SHOULDER_EXTENSION = 0.30  # Increased from 0.25 for more shoulder space
-ZOOM_OUT_FACTOR = 1.15  # Additional 15% zoom out
+FACE_HEIGHT_RATIO = 0.55  # Face occupies 55% of photo height
+TOP_SPACE_RATIO = 0.25  # 25% space above head
+SHOULDER_EXTENSION = 0.30  # 30% additional space below face for shoulders
+ZOOM_OUT_FACTOR = 1.15  # 15% zoom out
 
 # Load OpenCV's DNN face detection model
 prototxt_path = "deploy.prototxt"
 model_path = "res10_300x300_ssd_iter_140000.caffemodel"
 
-# Download model files if needed
+# Download model files if they don't exist
 if not os.path.exists(prototxt_path) or not os.path.exists(model_path):
     import urllib.request
     urllib.request.urlretrieve(
@@ -32,7 +32,7 @@ if not os.path.exists(prototxt_path) or not os.path.exists(model_path):
 
 net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
 
-# UI Setup
+# Title and instructions
 st.title("Professional Passport Photo Generator")
 st.markdown("""
 Upload any photo to get a perfectly standardized passport photo with:
@@ -45,7 +45,7 @@ Upload any photo to get a perfectly standardized passport photo with:
 def detect_hair_region(np_img, face_box):
     """Estimate hair region above detected face"""
     (x, y, w, h) = face_box
-    hair_height = int(h * 0.4)  # Increased from 0.3 for more hair coverage
+    hair_height = int(h * 0.4)  # 40% of face height for hair coverage
     hair_y1 = max(y - hair_height, 0)
     return (x, hair_y1, w, hair_height)
 
@@ -72,35 +72,40 @@ def standardize_passport_photo(image):
     detections = net.forward()
     
     # Find the face with highest confidence
-    best_face = max(
-        [(detections[0, 0, i, 3:7] * np.array([w, h, w, h]) for i in range(detections.shape[2])],
-        key=lambda box: detections[0, 0, np.argmax([detections[0, 0, i, 2] for i in range(detections.shape[2])]), 2]
-    )
+    max_confidence = 0
+    best_face = None
+    
+    for i in range(0, detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        if confidence > max_confidence:
+            max_confidence = confidence
+            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            (startX, startY, endX, endY) = box.astype("int")
+            best_face = (startX, startY, endX - startX, endY - startY)
     
     if best_face is None:
         raise ValueError("No face detected with sufficient confidence")
     
-    (startX, startY, endX, endY) = best_face.astype("int")
-    face_w, face_h = endX - startX, endY - startY
+    (x, y, w, h) = best_face
     
     # Estimate hair region
-    hair_box = detect_hair_region(np_img, (startX, startY, face_w, face_h))
+    hair_box = detect_hair_region(np_img, best_face)
     
     # Calculate dimensions with zoom-out adjustments
-    total_height = int((face_h / FACE_HEIGHT_RATIO) * ZOOM_OUT_FACTOR)
+    total_height = int((h / FACE_HEIGHT_RATIO) * ZOOM_OUT_FACTOR)
     top_space = int(total_height * TOP_SPACE_RATIO)
-    shoulder_space = int(face_h * SHOULDER_EXTENSION)
+    shoulder_space = int(h * SHOULDER_EXTENSION)
     
     # Calculate crop coordinates with zoom-out
-    y1 = max(startY - top_space, 0, hair_box[1])
-    y2 = min(startY + face_h + shoulder_space, np_img.shape[0])
+    y1 = max(y - top_space, 0, hair_box[1])
+    y2 = min(y + h + shoulder_space, np_img.shape[0])
     
     # Calculate width with aspect ratio and zoom-out
     target_aspect = PASSPORT_SIZE[0] / PASSPORT_SIZE[1]
     required_width = int((y2 - y1) * target_aspect * ZOOM_OUT_FACTOR)
     
     # Center horizontally with zoom-out
-    face_center = startX + face_w // 2
+    face_center = x + w // 2
     x1 = max(face_center - required_width // 2, 0)
     x2 = min(x1 + required_width, np_img.shape[1])
     
@@ -142,9 +147,9 @@ if uploaded_file:
             result_img.save(tmp_file.name, quality=100)
             st.download_button(
                 "Download Photo",
-                open(tmp_file.name, "rb").read(),
-                "passport_photo.jpg",
-                "image/jpeg"
+                data=open(tmp_file.name, "rb").read(),
+                file_name="passport_photo.jpg",
+                mime="image/jpeg"
             )
     
     except Exception as e:
