@@ -1,5 +1,5 @@
 streamlit
-rembg
-mediapipe
+opencv-python-headless
 Pillow
 numpy
+requests
