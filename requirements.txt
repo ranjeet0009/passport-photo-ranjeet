@@ -1,6 +1,5 @@
 streamlit
 rembg
+mediapipe
 Pillow
 numpy
-opencv-python
-face-recognition
