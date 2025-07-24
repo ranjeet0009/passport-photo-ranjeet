@@ -224,26 +224,16 @@ def detect_hair_region(np_img, face_box):
     return (x, hair_y1, w, hair_height)
 
 def standardize_passport_photo(image):
-    # Remove background
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_nobg = remove(img_byte_arr.getvalue())
-    img_nobg = Image.open(io.BytesIO(img_nobg)).convert("RGBA")
-    
-    # Create white background
-    white_bg = Image.new("RGBA", img_nobg.size, (255, 255, 255, 255))
-    img_white = Image.alpha_composite(white_bg, img_nobg).convert("RGB")
-    
-    # Convert to numpy array for face detection
-    np_img = np.array(img_white)
-    (h, w) = np_img.shape[:2]
+    # Convert to numpy array for initial face detection
+    np_img_original = np.array(image.convert("RGB"))
+    (h_orig, w_orig) = np_img_original.shape[:2]
     
     # Check if face detection model is loaded
     if net is None:
         raise RuntimeError("Face detection model failed to load.")
 
-    # Detect faces
-    blob = cv2.dnn.blobFromImage(cv2.resize(np_img, (300, 300)), 1.0,
+    # Detect faces on the original image
+    blob = cv2.dnn.blobFromImage(cv2.resize(np_img_original, (300, 300)), 1.0,
                                  (300, 300), (104.0, 177.0, 123.0))
     net.setInput(blob)
     detections = net.forward()
@@ -256,7 +246,7 @@ def standardize_passport_photo(image):
         confidence = detections[0, 0, i, 2]
         if confidence > max_confidence:
             max_confidence = confidence
-            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            box = detections[0, 0, i, 3:7] * np.array([w_orig, h_orig, w_orig, h_orig])
             (startX, startY, endX, endY) = box.astype("int")
             best_face = (startX, startY, endX - startX, endY - startY)
     
@@ -266,41 +256,49 @@ def standardize_passport_photo(image):
     (x, y, w, h) = best_face
     
     # Estimate hair region
-    hair_box = detect_hair_region(np_img, best_face)
+    hair_box = detect_hair_region(np_img_original, best_face)
     
     # Calculate dimensions with 25% zoom-out
     total_height = int((h / FACE_HEIGHT_RATIO) * ZOOM_OUT_FACTOR)
     top_space = int(total_height * TOP_SPACE_RATIO)
     shoulder_space = int(h * SHOULDER_EXTENSION)
     
-    # Calculate crop coordinates
+    # Calculate crop coordinates to isolate the person
     y1 = max(y - top_space, 0, hair_box[1])
-    y2 = min(y + h + shoulder_space, np_img.shape[0])
+    y2 = min(y + h + shoulder_space, np_img_original.shape[0])
     
-    # Calculate width with aspect ratio
     target_aspect = PASSPORT_SIZE[0] / PASSPORT_SIZE[1]
     required_width = int((y2 - y1) * target_aspect * ZOOM_OUT_FACTOR)
     
-    # Center horizontally
     face_center = x + w // 2
     x1 = max(face_center - required_width // 2, 0)
-    x2 = min(x1 + required_width, np_img.shape[1])
+    x2 = min(x1 + required_width, np_img_original.shape[1])
     
     # Ensure crop dimensions are valid
     if x2 <= x1 or y2 <= y1:
         raise ValueError("Calculated crop dimensions are invalid. Please try another photo.")
 
-    # Final crop
-    cropped = np_img[y1:y2, x1:x2]
-    passport_img = Image.fromarray(cropped)
+    # Perform initial crop to get the region of interest (the person)
+    cropped_for_rembg_np = np_img_original[y1:y2, x1:x2]
+    cropped_for_rembg_pil = Image.fromarray(cropped_for_rembg_np)
+
+    # Now, remove background from this cropped image
+    img_byte_arr_cropped = io.BytesIO()
+    cropped_for_rembg_pil.save(img_byte_arr_cropped, format='PNG')
+    img_nobg_cropped = remove(img_byte_arr_cropped.getvalue())
+    img_nobg_cropped_pil = Image.open(io.BytesIO(img_nobg_cropped)).convert("RGBA")
+    
+    # Create white background for the processed image
+    white_bg_final = Image.new("RGBA", img_nobg_cropped_pil.size, (255, 255, 255, 255))
+    img_white_final = Image.alpha_composite(white_bg_final, img_nobg_cropped_pil).convert("RGB")
     
     # Edge smoothing
-    passport_img = passport_img.filter(ImageFilter.GaussianBlur(radius=0.8))
+    img_white_final = img_white_final.filter(ImageFilter.GaussianBlur(radius=0.8))
     
     # Resize to passport size
-    passport_img = ImageOps.fit(passport_img, PASSPORT_SIZE, method=Image.Resampling.LANCZOS)
+    passport_img = ImageOps.fit(img_white_final, PASSPORT_SIZE, method=Image.Resampling.LANCZOS)
     
-    # Final composition (still white background for the passport photo itself)
+    # Final composition (this step is mostly for consistency, as img_white_final is already RGB with white bg)
     final_img = Image.new("RGB", PASSPORT_SIZE, (255, 255, 255))
     final_img.paste(passport_img, (0, 0))
     
